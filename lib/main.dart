@@ -267,6 +267,10 @@ class _HomePageState extends State<HomePage> {
                     child: Text('Busca una ciudad para ver su clima'),
                   ),
                 ),
+                const SizedBox(height: 16),
+                Text(
+                  'By Alberto Castillo G.'
+                )
             ],
           ),
         ),
