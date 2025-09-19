@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http; // Librería para hacer peticiones
+import 'package:http/http.dart' as http;
 
 Future<void> main() async {
-  runApp(const ClimaApp()); // Punto de entrada de la app
+  runApp(const ClimaApp());
 }
 
 class ClimaApp extends StatelessWidget {
@@ -16,7 +16,7 @@ class ClimaApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: const HomePage(), // Pantalla inicial
+      home: const HomePage(),
       debugShowCheckedModeBanner: false,
     );
   }
@@ -30,16 +30,16 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TextEditingController _cityCtrl = TextEditingController(
-    text: 'Pachuca',
+    text: 'Zimapan',
   );
-  // ⚠️ API Key de OpenWeatherMap (reemplazar con tu propia clave)
   static const String _apiKey = '77e19778f14a5fccf060043b53fb427c';
   bool _loading = false;
   String? _error;
   Map<String, dynamic>? _data;
-  // Función que busca el clima llamando a la API
+  Map<String, dynamic>? _forecastData;
+
   Future<void> _buscarClima() async {
-    FocusScope.of(context).unfocus(); // Cierra el teclado
+    FocusScope.of(context).unfocus();
     final city = _cityCtrl.text.trim();
     if (city.isEmpty) {
       setState(() => _error = 'Escribe una ciudad.');
@@ -48,12 +48,13 @@ class _HomePageState extends State<HomePage> {
     setState(() {
       _loading = true;
       _error = null;
+      _forecastData = null; // Reset forecast data
     });
     final uri = Uri.https('api.openweathermap.org', '/data/2.5/weather', {
       'q': city,
       'appid': _apiKey,
-      'units': 'metric', // Métricas → °C
-      'lang': 'es', // Respuesta en español
+      'units': 'metric',
+      'lang': 'es',
     });
     try {
       final resp = await http.get(uri);
@@ -61,7 +62,6 @@ class _HomePageState extends State<HomePage> {
         final json = jsonDecode(resp.body) as Map<String, dynamic>;
         setState(() {
           _data = json;
-
           _loading = false;
         });
       } else {
@@ -78,11 +78,97 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       setState(() {
-        _error = 'Error de red: $e'; // Ej. sin Internet
+        _error = 'Error de red: $e';
         _loading = false;
         _data = null;
       });
     }
+  }
+
+  Future<void> _buscarPronostico() async {
+    final city = _cityCtrl.text.trim();
+    if (city.isEmpty) return;
+
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+
+    final uri = Uri.https('api.openweathermap.org', '/data/2.5/forecast', {
+      'q': city,
+      'appid': _apiKey,
+      'units': 'metric',
+      'lang': 'es',
+    });
+
+    try {
+      final resp = await http.get(uri);
+      if (resp.statusCode == 200) {
+        final json = jsonDecode(resp.body) as Map<String, dynamic>;
+        setState(() {
+          _forecastData = json;
+          _loading = false;
+          _mostrarDialogoPronostico();
+        });
+      } else {
+        String msg = 'Error ${resp.statusCode}';
+        try {
+          final j = jsonDecode(resp.body);
+          if (j is Map && j['message'] is String) msg = j['message'];
+        } catch (_) {}
+        setState(() {
+          _error = 'No se pudo obtener el pronóstico: $msg';
+          _loading = false;
+          _forecastData = null;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = 'Error de red: $e';
+        _loading = false;
+        _forecastData = null;
+      });
+    }
+  }
+
+  void _mostrarDialogoPronostico() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        final list = (_forecastData?['list'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+        return AlertDialog(
+          title: Text('Pronóstico para ${_cityCtrl.text}'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              itemCount: list.length,
+              itemBuilder: (context, index) {
+                
+                final item = list[index];                
+                final dt = DateTime.fromMillisecondsSinceEpoch((item['dt'] as int) * 1000);
+                final temp = item['main']?['temp'];
+                final weather = (item['weather'] as List?)?.first;
+                final description = weather?['description'];
+                final icon = weather?['icon'];
+                final iconUrl = icon != null ? 'https://openweathermap.org/img/wn/$icon@2x.png' : null;
+
+                return ListTile(
+                  leading: iconUrl != null ? Image.network(iconUrl) : null,
+                  title: Text('${dt.day}/${dt.month} ${dt.hour}:00 - $description'),
+                  subtitle: Text('${temp}°C'),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -104,8 +190,7 @@ class _HomePageState extends State<HomePage> {
       final weather = (d['weather'] as List?)?.cast<Map<String, dynamic>>();
       if (weather != null && weather.isNotEmpty) {
         descripcion = weather.first['description']?.toString();
-
-        icono = weather.first['icon']?.toString(); // Código del icono (ej. 10d)
+        icono = weather.first['icon']?.toString();
       }
       final main = d['main'] as Map<String, dynamic>?;
       temp = main?['temp'];
@@ -121,7 +206,6 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // Input de ciudad + botón Buscar
               Row(
                 children: [
                   Expanded(
@@ -145,11 +229,9 @@ class _HomePageState extends State<HomePage> {
                   ),
                 ],
               ),
-
               const SizedBox(height: 16),
               if (_loading)
-                const LinearProgressIndicator(), // Indicador de carga
-
+                const LinearProgressIndicator(),
               if (_error != null) ...[
                 const SizedBox(height: 8),
                 Row(
@@ -166,7 +248,6 @@ class _HomePageState extends State<HomePage> {
                 ),
               ],
               const SizedBox(height: 16),
-              // Muestra clima si hay datos, o un mensaje por defecto
               if (hasData)
                 _ClimaCard(
                   ciudad: nombreCiudad ?? '',
@@ -178,6 +259,7 @@ class _HomePageState extends State<HomePage> {
                   tempMax: tempMax?.toDouble(),
                   sensacion: sensacion?.toDouble(),
                   humedad: humedad?.toInt(),
+                  onPronostico: _buscarPronostico,
                 )
               else
                 const Expanded(
@@ -193,7 +275,6 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// Widget tarjeta para mostrar clima actual
 class _ClimaCard extends StatelessWidget {
   final String ciudad;
   final String pais;
@@ -204,6 +285,8 @@ class _ClimaCard extends StatelessWidget {
   final double? tempMax;
   final double? sensacion;
   final int? humedad;
+  final VoidCallback? onPronostico;
+
   const _ClimaCard({
     required this.ciudad,
     required this.pais,
@@ -214,7 +297,9 @@ class _ClimaCard extends StatelessWidget {
     required this.tempMax,
     required this.sensacion,
     required this.humedad,
+    this.onPronostico,
   });
+
   @override
   Widget build(BuildContext context) {
     final iconUrl = iconCode != null
@@ -262,14 +347,12 @@ class _ClimaCard extends StatelessWidget {
                           label: 'Humedad',
                           value: '$humedad%',
                         ),
-
                       if (sensacion != null)
                         _InfoChip(
                           icon: Icons.thermostat,
                           label: 'Sensación',
                           value: '${sensacion!.toStringAsFixed(1)}°C',
                         ),
-
                       if (tempMin != null)
                         _InfoChip(
                           icon: Icons.arrow_downward,
@@ -280,11 +363,17 @@ class _ClimaCard extends StatelessWidget {
                         _InfoChip(
                           icon: Icons.arrow_upward,
                           label: 'Máx',
-
                           value: '${tempMax!.toStringAsFixed(1)}°C',
                         ),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  if (onPronostico != null)
+                    ElevatedButton.icon(
+                      onPressed: onPronostico,
+                      icon: const Icon(Icons.calendar_today),
+                      label: const Text('Pronóstico 5 días'),
+                    ),
                 ],
               ),
             ),
@@ -295,7 +384,6 @@ class _ClimaCard extends StatelessWidget {
   }
 }
 
-// Chip reutilizable para mostrar pares "Etiqueta: Valor"
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
