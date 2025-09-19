@@ -1,6 +1,8 @@
-# weather_app
+# Aplicación de clima "weather_app"
+Aplicación educativa que consume la API de openweathermap.
 
-A new Flutter project.
+## Instalación 
+flutter pub get
 
 ## Getting Started
 
